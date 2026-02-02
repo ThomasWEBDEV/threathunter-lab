@@ -1,37 +1,11 @@
 import json
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-import matplotlib.patches as mpatches
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict, Counter
 
-# --- Config ---
 LOG_FILE = "data/cowrie.json"
 OWN_IP = "51.44.84.225"
-
-# Couleurs par IP
-COLORS = {
-    "66.116.205.1":    "#e74c3c",  # rouge - worm
-    "64.225.65.182":   "#3498db",  # bleu - brute-force
-    "161.35.156.145":  "#2ecc71",  # vert - brute-force
-    "165.232.83.65":   "#9b59b6",  # violet - brute-force
-    "205.210.31.153":  "#f39c12",  # orange - scanner
-    "36.95.238.13":    "#1abc9c",  # cyan - scanner
-    "54.144.193.250":  "#e67e22",  # orange sombre - scanner rapide
-    "35.180.112.84":   "#95a5a6",  # gris - scanner rapide
-}
-
-# Labels descriptifs par IP
-LABELS = {
-    "66.116.205.1":    "WORM",
-    "64.225.65.182":   "Brute-force",
-    "161.35.156.145":  "Brute-force",
-    "165.232.83.65":   "Brute-force",
-    "205.210.31.153":  "Scanner",
-    "36.95.238.13":    "Scanner",
-    "54.144.193.250":  "Scanner rapide",
-    "35.180.112.84":   "Scanner rapide",
-}
 
 def load_logs():
     events = []
@@ -63,24 +37,19 @@ def get_sessions(events):
 def get_logins(events):
     return [e for e in events if e.get("eventid") == "cowrie.login.success"]
 
-def get_commands(events):
-    return [e for e in events if e.get("eventid") == "cowrie.command.input"]
-
 # --- MAIN ---
 events = load_logs()
 sessions = get_sessions(events)
 logins = get_logins(events)
-commands = get_commands(events)
 
-# Figure grande et claire
-fig, axes = plt.subplots(2, 2, figsize=(22, 14))
-fig.suptitle("🛡️  Honeypot Cowrie — Analyse des Attaques  |  01/02/2026",
-             fontsize=20, fontweight="bold", color="white", y=0.98)
+fig, axes = plt.subplots(2, 2, figsize=(18, 11))
+fig.suptitle("Honeypot Cowrie — Analyse des Attaques  |  Mise à jour " + datetime.now().strftime("%d/%m/%Y"),
+             fontsize=16, fontweight="bold", color="white", y=0.98)
 fig.patch.set_facecolor("#1a1a2e")
 
 for ax in axes.flat:
     ax.set_facecolor("#16213e")
-    ax.tick_params(colors="white", labelsize=10)
+    ax.tick_params(colors="white", labelsize=9)
     ax.title.set_color("white")
     ax.xaxis.label.set_color("white")
     ax.yaxis.label.set_color("white")
@@ -88,193 +57,135 @@ for ax in axes.flat:
         spine.set_color("#0f3460")
 
 # =============================================
-# 1. TIMELINE des sessions (haut gauche)
+# 1. TIMELINE simplifiée (haut gauche)
 # =============================================
 ax = axes[0, 0]
-ax.set_title("⏱️  Timeline des Sessions SSH", fontsize=15, fontweight="bold", pad=12)
+ax.set_title("Timeline des Sessions SSH", fontsize=13, fontweight="bold", pad=10)
 
-# Tri les IPs par heure de première connexion
-ip_first = {}
-for s in sessions.values():
-    ip = s["ip"]
-    if ip not in ip_first or s["start"] < ip_first[ip]:
-        ip_first[ip] = s["start"]
-ip_order = sorted(ip_first.keys(), key=lambda ip: ip_first[ip])
-y_map = {ip: i for i, ip in enumerate(ip_order)}
+# Top 15 IPs par nombre de sessions pour la timeline
+ip_counts = Counter(s["ip"] for s in sessions.values())
+top_ips_timeline = [ip for ip, _ in ip_counts.most_common(15)]
+y_map = {ip: i for i, ip in enumerate(top_ips_timeline)}
+
+# Palette de couleurs
+colors_palette = plt.cm.tab20(range(20))
 
 for sid, s in sessions.items():
     ip = s["ip"]
+    if ip not in top_ips_timeline:
+        continue
     start = s["start"]
     dur = s["duration"]
-    color = COLORS.get(ip, "#ccc")
-    # Conversion durée en jours pour l'axe X (matplotlib utilise des jours)
-    width_days = max(dur, 60) / 86400  # minimum 60s pour être visible
+    color = colors_palette[top_ips_timeline.index(ip) % 20]
+    width_days = max(dur, 30) / 86400
     ax.barh(
         y=y_map[ip],
         width=width_days,
         left=mdates.date2num(start),
-        height=0.35,
+        height=0.5,
         color=color,
         edgecolor="#000",
-        linewidth=0.6,
-        alpha=0.85
+        linewidth=0.4,
+        alpha=0.8
     )
-    # Heure exacte sur chaque barre
-    ax.text(mdates.date2num(start) + width_days / 2, y_map[ip],
-            start.strftime("%H:%M:%S"), va="center", ha="center",
-            fontsize=7.5, color="white", fontweight="bold")
 
-# Labels Y : IP + type d'attaque
-ax.set_yticks(range(len(ip_order)))
-ax.set_yticklabels(
-    [f"{ip}  ({LABELS.get(ip, '?')})" for ip in ip_order],
-    fontsize=9, color="white"
-)
+ax.set_yticks(range(len(top_ips_timeline)))
+ax.set_yticklabels(top_ips_timeline, fontsize=8, color="white")
 ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-ax.xaxis.set_major_locator(mdates.MinuteLocator(interval=30))
-all_starts = [mdates.date2num(s["start"]) for s in sessions.values()]
-ax.set_xlim(min(all_starts) - 0.015, max(all_starts) + 0.015)
-ax.set_xlabel("Heure (UTC)", fontsize=11)
+ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+all_starts = [mdates.date2num(s["start"]) for s in sessions.values() if s["ip"] in top_ips_timeline]
+if all_starts:
+    ax.set_xlim(min(all_starts) - 0.01, max(all_starts) + 0.01)
+ax.set_xlabel("Heure (UTC)", fontsize=10)
 plt.setp(ax.xaxis.get_majorticklabels(), rotation=25, ha="right")
-ax.grid(axis="x", color="#0f3460", linestyle="--", alpha=0.4)
+ax.grid(axis="x", color="#0f3460", linestyle="--", alpha=0.3)
 
 # =============================================
 # 2. Sessions par IP (haut droite)
 # =============================================
 ax = axes[0, 1]
-ax.set_title("📊  Nombre de Sessions par IP", fontsize=15, fontweight="bold", pad=12)
+ax.set_title("Top 15 IPs — Nombre de Sessions", fontsize=13, fontweight="bold", pad=10)
 
-ip_counts = Counter(s["ip"] for s in sessions.values())
-# Tri par nombre de sessions décroissant
-sorted_ips_count = sorted(ip_counts.keys(), key=lambda ip: ip_counts[ip])
-counts = [ip_counts[ip] for ip in sorted_ips_count]
-colors_bar = [COLORS.get(ip, "#ccc") for ip in sorted_ips_count]
+top_ips_count = ip_counts.most_common(15)
+ips_display = [ip for ip, _ in top_ips_count]
+counts_display = [count for _, count in top_ips_count]
 
-bars = ax.barh(range(len(sorted_ips_count)), counts, color=colors_bar,
-               edgecolor="#000", linewidth=0.6, height=0.5)
-ax.set_xlabel("Nombre de sessions", fontsize=11)
+bars = ax.barh(range(len(ips_display)), counts_display,
+               color=[colors_palette[i % 20] for i in range(len(ips_display))],
+               edgecolor="#000", linewidth=0.4, height=0.6)
+ax.set_xlabel("Nombre de sessions", fontsize=10)
 
-# Labels Y : IP + type
-ax.set_yticks(range(len(sorted_ips_count)))
-ax.set_yticklabels(
-    [f"{ip}  ({LABELS.get(ip, '?')})" for ip in sorted_ips_count],
-    fontsize=9, color="white"
-)
+ax.set_yticks(range(len(ips_display)))
+ax.set_yticklabels(ips_display, fontsize=8, color="white")
 
-# Nombre sur chaque barre
-for bar, count in zip(bars, counts):
-    ax.text(bar.get_width() + 0.15, bar.get_y() + bar.get_height() / 2,
-            str(count), va="center", color="white", fontsize=11, fontweight="bold")
+for bar, count in zip(bars, counts_display):
+    ax.text(bar.get_width() + 0.2, bar.get_y() + bar.get_height() / 2,
+            str(count), va="center", color="white", fontsize=9, fontweight="bold")
 
-ax.set_xlim(0, max(counts) + 1.8)
-ax.grid(axis="x", color="#0f3460", linestyle="--", alpha=0.4)
+ax.set_xlim(0, max(counts_display) + 1.5)
+ax.grid(axis="x", color="#0f3460", linestyle="--", alpha=0.3)
 
 # =============================================
-# 3. Credentials testés (bas gauche)
+# 3. Top credentials (bas gauche)
 # =============================================
 ax = axes[1, 0]
-ax.set_title("🔐  Mots de passe les plus testés par les attaquants",
-             fontsize=15, fontweight="bold", pad=12)
+ax.set_title("Top 10 Mots de passe testés", fontsize=13, fontweight="bold", pad=10)
 
 cred_counter = Counter(e.get("password", "") for e in logins)
 top_creds = cred_counter.most_common(10)
 labels_cred = [c[0] for c in top_creds]
 values_cred = [c[1] for c in top_creds]
 
-# Quelle IP a utilisé quel mot de passe
-cred_ips = defaultdict(list)
-for e in logins:
-    cred_ips[e.get("password", "")].append(e.get("src_ip", "?"))
-
 cmap = plt.cm.plasma
 cred_colors = [cmap(i / max(len(labels_cred) - 1, 1)) for i in range(len(labels_cred))]
 
 bars = ax.barh(range(len(labels_cred)), values_cred, color=cred_colors,
-               edgecolor="#000", linewidth=0.6, height=0.5)
-ax.set_xlabel("Nombre d'utilisations", fontsize=11)
+               edgecolor="#000", linewidth=0.4, height=0.6)
+ax.set_xlabel("Nombre d'utilisations", fontsize=10)
 
-# Labels Y : mot de passe + IPs qui l'ont utilisé
 ax.set_yticks(range(len(labels_cred)))
-ax.set_yticklabels(labels_cred, fontsize=10, color="white", fontweight="bold")
+ax.set_yticklabels(labels_cred, fontsize=9, color="white", fontweight="bold")
 
-# Nombre + IPs sources à droite de chaque barre
-for i, (bar, val) in enumerate(zip(bars, values_cred)):
-    pwd = labels_cred[i]
-    ips_src = ", ".join(set(cred_ips[pwd]))
-    ax.text(bar.get_width() + 0.08, bar.get_y() + bar.get_height() / 2,
-            f"{val}×  ← {ips_src}", va="center", color="white", fontsize=8)
+for bar, val in zip(bars, values_cred):
+    ax.text(bar.get_width() + 0.05, bar.get_y() + bar.get_height() / 2,
+            f"{val}×", va="center", color="white", fontsize=9, fontweight="bold")
 
-ax.set_xlim(0, max(values_cred) + 1.2)
-ax.grid(axis="x", color="#0f3460", linestyle="--", alpha=0.4)
+ax.set_xlim(0, max(values_cred) + 0.8)
+ax.grid(axis="x", color="#0f3460", linestyle="--", alpha=0.3)
 
 # =============================================
-# 4. Durée des sessions par IP (bas droite)
+# 4. Durée des sessions (bas droite)
 # =============================================
 ax = axes[1, 1]
-ax.set_title("⏰  Durée des Sessions par IP (en secondes)",
-             fontsize=15, fontweight="bold", pad=12)
+ax.set_title("Durée des Sessions (Top 15 IPs)", fontsize=13, fontweight="bold", pad=10)
 
 dur_by_ip = defaultdict(list)
 for s in sessions.values():
-    dur_by_ip[s["ip"]].append(s["duration"])
+    if s["ip"] in top_ips_timeline:
+        dur_by_ip[s["ip"]].append(s["duration"])
 
-# Tri par durée max croissante → le WORM en haut
 sorted_ips_dur = sorted(dur_by_ip.keys(), key=lambda ip: max(dur_by_ip[ip]))
 
 for i, ip in enumerate(sorted_ips_dur):
     durations = dur_by_ip[ip]
-    color = COLORS.get(ip, "#ccc")
-    # Ligne horizontale de référence
-    ax.axhline(y=i, color="#0f3460", linewidth=0.6, zorder=1)
-    # Points
-    ax.scatter(durations, [i] * len(durations), color=color, s=120,
-               edgecolors="#000", linewidth=1, zorder=3)
-    # Durée exacte sur chaque point
-    for d in durations:
-        ax.text(d + 3, i + 0.12, f"{d:.1f}s", fontsize=7.5, color="white", va="bottom")
+    color = colors_palette[top_ips_timeline.index(ip) % 20]
+    ax.axhline(y=i, color="#0f3460", linewidth=0.4, zorder=1)
+    ax.scatter(durations, [i] * len(durations), color=color, s=80,
+               edgecolors="#000", linewidth=0.6, zorder=3, alpha=0.8)
 
-# Labels Y : IP + type
 ax.set_yticks(range(len(sorted_ips_dur)))
-ax.set_yticklabels(
-    [f"{ip}  ({LABELS.get(ip, '?')})" for ip in sorted_ips_dur],
-    fontsize=9, color="white"
-)
-ax.set_xlabel("Durée de la session (secondes)", fontsize=11)
+ax.set_yticklabels(sorted_ips_dur, fontsize=8, color="white")
+ax.set_xlabel("Durée (secondes)", fontsize=10)
 
-# Borne X
-max_all = max(max(dur_by_ip[ip]) for ip in dur_by_ip)
-ax.set_xlim(-15, max_all + 40)
-ax.grid(axis="x", color="#0f3460", linestyle="--", alpha=0.4)
-
-# Annotation WORM (en haut)
-worm_y = len(sorted_ips_dur) - 1
-worm_dur = max(dur_by_ip["66.116.205.1"])
-ax.annotate("🔴 WORM — Upload malware\n    + propagation vers 50 IPs",
-            xy=(worm_dur, worm_y),
-            xytext=(worm_dur - 120, worm_y - 1.2),
-            color="#e74c3c", fontsize=9, fontweight="bold",
-            arrowprops=dict(arrowstyle="->", color="#e74c3c", lw=2.5),
-            bbox=dict(boxstyle="round,pad=0.3", facecolor="#1a1a2e", edgecolor="#e74c3c"))
+if dur_by_ip:
+    max_all = max(max(dur_by_ip[ip]) for ip in dur_by_ip)
+    ax.set_xlim(-5, max_all + 15)
+ax.grid(axis="x", color="#0f3460", linestyle="--", alpha=0.3)
 
 # =============================================
-# Légende globale en bas
-# =============================================
-legend_patches = [
-    mpatches.Patch(color=COLORS["66.116.205.1"],   label="66.116.205.1  — WORM (malware uploadé)"),
-    mpatches.Patch(color=COLORS["64.225.65.182"],  label="64.225.65.182  — Brute-force automatisé"),
-    mpatches.Patch(color=COLORS["161.35.156.145"], label="161.35.156.145 — Brute-force automatisé"),
-    mpatches.Patch(color=COLORS["165.232.83.65"],  label="165.232.83.65  — Brute-force automatisé"),
-    mpatches.Patch(color=COLORS["205.210.31.153"], label="205.210.31.153 — Scanner (ZGrab)"),
-    mpatches.Patch(color=COLORS["36.95.238.13"],   label="36.95.238.13   — Scanner (timeout 120s)"),
-    mpatches.Patch(color=COLORS["54.144.193.250"], label="54.144.193.250 — Scanner rapide"),
-    mpatches.Patch(color=COLORS["35.180.112.84"],  label="35.180.112.84  — Scanner rapide"),
-]
-fig.legend(handles=legend_patches, loc="lower center", ncol=4,
-           fontsize=9, facecolor="#1a1a2e", edgecolor="#0f3460",
-           labelcolor="white", frameon=True, bbox_to_anchor=(0.5, 0.01))
-
-# =============================================
-plt.tight_layout(rect=[0, 0.06, 1, 0.95])
+plt.tight_layout(rect=[0, 0.02, 1, 0.96])
 plt.savefig("output/cowrie_dashboard.png", dpi=150,
-            facecolor=fig.get_facecolor(), bbox_inches="tight", pad_inches=0.4)
-print("[+] Dashboard sauvegardé : output/cowrie_dashboard.png")
+            facecolor=fig.get_facecolor(), bbox_inches="tight", pad_inches=0.3)
+print(f"[+] Dashboard sauvegardé : output/cowrie_dashboard.png")
+print(f"[+] Sessions analysées : {len(sessions)}")
+print(f"[+] IPs uniques : {len(set(s['ip'] for s in sessions.values()))}")
