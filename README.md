@@ -182,3 +182,17 @@ Emplacement serveur: /var/lib/cowrie/downloads/
 - Apprendre à contrer ces attaques (fail2ban, clés SSH uniquement, etc.)
 - Attendre de nouvelles attaques et mettre à jour l'analyse
 - Rapport final du projet
+
+---
+
+## Sécurisation du serveur (fait le 02/02/2026)
+
+### fail2ban
+- Installé et configuré sur le port 2222 (SSH admin)
+- 3 tentatives max sur 10 minutes → ban 1 heure
+- Le honeypot (port 22) est volontairement laissé ouvert
+
+### SSH admin durci
+- Port : 2222
+- PasswordAuthentication : non (clé uniquement)
+- PermitRootLogin : non
