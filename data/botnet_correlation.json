@@ -1,0 +1,20 @@
+{
+  "credentials_botnets": [
+    {
+      "pattern": [
+        "root:"
+      ],
+      "ips": [
+        "34.90.47.28",
+        "91.92.241.59"
+      ],
+      "count": 2
+    }
+  ],
+  "commands_botnets": [],
+  "stats": {
+    "total_ips": 19,
+    "ips_with_credentials": 5,
+    "ips_with_commands": 4
+  }
+}
