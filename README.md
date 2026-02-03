@@ -27,17 +27,45 @@ On déploie un serveur SSH volontairement exposé sur Internet (honeypot). Les a
 ```
 threathunter-lab/
 ├── data/
-│   └── cowrie.json            # Logs bruts du honeypot (233 événements)
+│   ├── cowrie.json                # Logs bruts du honeypot (1056 événements)
+│   ├── geolocations.json          # Données de géolocalisation des IPs
+│   ├── botnet_correlation.json    # Résultats corrélation botnets
+│   └── malware_worm.bin           # Malware capturé (30 Mo)
 ├── scripts/
-│   ├── parser.py              # Parse les logs JSON → rapport terminal
-│   └── visualize.py           # Génère le dashboard matplotlib (4 graphiques)
+│   ├── parser.py                  # Parse les logs JSON → rapport terminal
+│   ├── visualize.py               # Génère le dashboard matplotlib
+│   ├── geolocate.py               # Géolocalise les IPs attaquantes
+│   └── correlate_botnets.py       # Corrèle les botnets par pattern
 ├── output/
-│   └── cowrie_dashboard.png   # Dashboard visuel des attaques
+│   └── cowrie_dashboard.png       # Dashboard visuel des attaques
 ├── screenshots/
-│   ├── honeypot1.jpg          # Dashboard v1 (première version)
-│   └── honeypoy2.jpg          # Dashboard v2 (version détaillée finale)
-└── README.md                  # Ce fichier
+│   ├── honeypot1.jpg              # Dashboard v1
+│   ├── honeypoy2.jpg              # Dashboard v2
+│   └── honeypot3.jpg              # Dashboard v3 (final)
+├── docs/
+│   ├── malware_analysis.md        # Analyse détaillée du malware WORM
+│   ├── geographic_analysis.md     # Analyse géographique des attaques
+│   ├── botnet_correlation.md      # Corrélation et identification des botnets
+│   └── rapport_final.md           # Rapport de synthèse complet
+└── README.md                      # Ce fichier
 ```
+
+---
+
+## Résultats — Chiffres clés
+
+| Métrique | Valeur |
+|---|---|
+| Durée du projet | 2 jours (01-03 février 2026) |
+| Événements capturés | 1056 |
+| Sessions SSH | 187 |
+| IPs uniques | 19 |
+| Pays d'origine | 8 |
+| Tentatives de login | 63 |
+| Commandes exécutées | 73 |
+| Malwares capturés | 1 (30 Mo) |
+| WORM détectés | 2 |
+| Botnets identifiés | 1 (2 IPs) |
 
 ---
 
@@ -75,7 +103,13 @@ wc -l data/cowrie.json
 # Lancer le parser (rapport texte terminal)
 python3 scripts/parser.py
 
-# Lancer la visualisation (génère le dashboard)
+# Géolocaliser les IPs
+python3 scripts/geolocate.py
+
+# Corrélation des botnets
+python3 scripts/correlate_botnets.py
+
+# Générer le dashboard visuel
 python3 scripts/visualize.py
 
 # Ouvrir le dashboard
@@ -84,104 +118,60 @@ xdg-open output/cowrie_dashboard.png
 
 ---
 
-## Dashboard — Ce que montre chaque graphique
+## Dashboard — Visualisations
 
-### 1. Timeline des Sessions SSH (haut gauche)
-Chaque ligne = une IP. Chaque barre = une session avec l'heure exacte affichée dessus.
-Les barres courtes = scanners ou brute-forceurs qui partent vite.
-La barre rouge (66.116.205.1) = le WORM qui reste longtemps pour uploader son malware.
+Le dashboard génère 4 graphiques :
 
-### 2. Nombre de Sessions par IP (haut droite)
-Compte combien de fois chaque IP s'est reconnectée.
-Plus de sessions = plus de tentatives de mot de passe.
-Le WORM n'a eu besoin qu'une seule session pour faire son coup.
-
-### 3. Mots de passe les plus testés (bas gauche)
-Les credentials les plus utilisés par les attaquants, avec les IPs sources à droite de chaque barre.
-`password` et `admin` = les classiques testés en premier par tous les bots.
-
-### 4. Durée des Sessions par IP (bas droite)
-Chaque point = une session avec sa durée exacte en secondes.
-Tous les points à gauche (0-9s) = scanners et brute-forceurs rapides.
-Le point rouge en haut à droite = le WORM à 222s, annoté avec une explication.
-
-### Légende globale (en bas)
-Toutes les IPs avec leur couleur et leur type d'attaque. On peut tout identifier d'un coup d'œil.
+1. **Timeline des Sessions SSH** — Vue chronologique de toutes les sessions par IP
+2. **Top 15 IPs par nombre de sessions** — Les attaquants les plus actifs
+3. **Top 10 mots de passe testés** — Les credentials les plus utilisés
+4. **Durée des sessions par IP** — Identification des sessions anormalement longues (WORM)
 
 ---
 
-## Attaques détectées (journée du 01/02/2026)
+## Attaques détectées
 
 ### 1. Scanners — Reconnaissance passive
-IPs : 36.95.238.13, 54.144.193.250, 205.210.31.153, 35.180.112.84
+IPs : 36.95.238.13, 54.144.193.250, 205.210.31.153, 35.180.112.84, 3.137.73.221, 198.235.24.6, 82.147.84.195, 82.147.84.55, 147.185.132.49
 
-Ces machines testent juste si le port SSH est ouvert. Elles se connectent rapidement et repartent sans essayer de se loger. Comme un cambrioleur qui teste les poignées de porte.
-
-- Aucun login tenté
-- Durée de session : 0 à 9 secondes
-- Aucun danger réel
+Ces machines testent juste si le port SSH est ouvert. Elles se connectent rapidement et repartent sans essayer de se loger.
 
 ### 2. Brute-force automatisé — Tentatives de mot de passe
-IPs : 64.225.65.182, 161.35.156.145, 165.232.83.65
+IPs : 64.225.65.182, 161.35.156.145, 165.232.83.65, 167.71.67.121, 165.232.86.21, 174.138.6.172, 164.92.208.187, 134.122.52.74, 167.99.37.125, 104.248.88.200
 
-Un même botnet opère depuis 3 IPs différentes. Il teste automatiquement des mots de passe très courants sur des dizaines de machines en parallèle.
+Botnets qui testent automatiquement des mots de passe courants. Après un login "réussi", ils lancent des commandes de reconnaissance système pour décider quel payload déployer.
 
-Credentials testés : password, admin, 12345, qwerty, 12345678, 123456789, 1234, password1
+### 3. Brute-force ciblé — Scanner sophistiqué
+IP : 172.105.19.132 (Canada - Linode)
 
-Après un login "réussi" (Cowrie fait semblant d'accepter), le botnet lance une grande commande de reconnaissance :
-- Détecte l'architecture CPU/GPU via uname, /proc/cpuinfo, lspci
-- Vérifie le nombre de processeurs
-- Analyse le système pour décider quel payload déployer (cryptominer sur GPU, etc.)
+100+ sessions en 3 minutes. Teste 60 credentials spécifiques à des distros : `vagrant`, `osboxes.org`, `freenas`, `rasplex`, `alpine`, `openmediavault`. Scanner très sophistiqué qui cible des environnements précis.
 
-Client utilisé : SSH-2.0-Go — un outil de scanning écrit en Go, très rapide.
+### 4. WORM — Attaques les plus sérieuses
+IPs : 66.116.205.1, 113.240.110.0 (Chine)
 
-- 22 sessions en tout sur les 3 IPs
-- Sessions très courtes (0 à 2.7 secondes)
+Les deux ont uploadé le même malware (30 Mo) et tenté de se propager vers 50 autres machines chacun. Analyse complète disponible dans `docs/malware_analysis.md`.
 
-### 3. WORM — Attaque la plus sérieuse
-IP : 66.116.205.1
-
-C'est l'attaque la plus avancée capturée. Déroulement étape par étape :
-
-1. Login avec root / ubuntu — Cowrie accepte (faux)
-2. Upload SFTP d'un fichier malveillant déguisé en sshd (le processus SSH normal)
-3. Exécution du malware avec une liste de 50 IPs cibles :
-```
-chmod +x ./.274911462705534352/sshd
-nohup ./.274911462705534352/sshd [50 IPs cibles] &
-```
-4. Le malware essaie de se propager automatiquement vers ces 50 autres machines. C'est la définition d'un worm : un programme qui se réplique seul.
-
-Malware capturé :
-```
-SHA256: 94f2e4d8d4436874785cd14e6e6d403507b8750852f7f2040352069a75da4c00
-Emplacement serveur: /var/lib/cowrie/downloads/
-```
-
-- Durée session : 222 secondes (la plus longue de la journée)
-- Fichier malveillant archivé pour analyse ultérieure
+**Malware capturé :**
+- SHA256: 94f2e4d8d4436874785cd14e6e6d403507b8750852f7f2040352069a75da4c00
+- Type: ELF 64-bit, Go (Golang)
+- Comportement: SSH WORM P2P avec cryptomining
+- Source: `panchansminingisland/rootkit.go`
 
 ---
 
-## Statistiques
+## Répartition géographique
 
-| Métrique | Valeur |
-|---|---|
-| Événements totaux | 233 |
-| IPs externes distinctes | 8 |
-| Sessions externes | 28 |
-| Tentatives de login | 15 |
-| Commandes exécutées | 57 |
-| Malwares capturés | 1 |
+| Pays | IPs | % |
+|---|---|---|
+| États-Unis | 7 | 36.8% |
+| Pays-Bas | 6 | 31.6% |
+| Canada | 2 | 10.5% |
+| Russie | 1 | 5.3% |
+| Chine | 1 | 5.3% |
+| Allemagne | 1 | 5.3% |
+| Indonésie | 1 | 5.3% |
 
----
-
-## Prochaines étapes
-
-- Analyser le malware capturé (hash SHA256)
-- Apprendre à contrer ces attaques (fail2ban, clés SSH uniquement, etc.)
-- Attendre de nouvelles attaques et mettre à jour l'analyse
-- Rapport final du projet
+La majorité des IPs proviennent de datacenters cloud (USA/Pays-Bas). Les vraies origines sont probablement masquées.
 
 ---
 
@@ -196,3 +186,26 @@ Emplacement serveur: /var/lib/cowrie/downloads/
 - Port : 2222
 - PasswordAuthentication : non (clé uniquement)
 - PermitRootLogin : non
+
+---
+
+## Compétences démontrées
+
+- Déploiement infrastructure cloud (AWS)
+- Configuration honeypot (Cowrie)
+- Analyse de logs et threat intelligence
+- Reverse engineering malware (analyse statique)
+- Scripting Python (parsing, visualisation, corrélation)
+- Géolocalisation et tracking d'attaquants
+- Documentation technique professionnelle
+- Versionnage Git
+
+---
+
+## Documentation complète
+
+Tous les détails techniques sont disponibles dans le dossier `docs/` :
+- `malware_analysis.md` — Analyse complète du WORM
+- `geographic_analysis.md` — Répartition mondiale des attaques
+- `botnet_correlation.md` — Identification des botnets
+- `rapport_final.md` — Synthèse complète du projet
